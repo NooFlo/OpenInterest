@@ -110,3 +110,12 @@ def test_session_board_bootstrap_chips_dismiss_and_query(client):
     assert r.status_code == 200 and "art deco" in r.json()["breadcrumb"]
 
     assert client.get("/").status_code == 200
+
+
+def testSwipeStyleInitialQuerySeedsSession(client):
+    r = client.post("/sessions", json={"initial_query": "chairs"})
+    assert r.status_code == 200
+    sid = r.json()["id"]
+    q = client.get(f"/sessions/{sid}/query").json()
+    assert q["query"] == "chairs"
+    assert client.get("/").status_code == 200

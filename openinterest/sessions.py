@@ -37,10 +37,13 @@ class SessionEngine:
         self.settings = settings or Settings()
 
     # -- lifecycle -------------------------------------------------------------
-    def create(self, seed_pin_ids: list[str], board_id: str | None = None) -> dict:
+    def create(self, seed_pin_ids: list[str], board_id: str | None = None,
+               initial_query: str | None = None) -> dict:
         """Start a session. A board id bootstraps the first-level query: the
         board name seeds the object facet and member pins' tags/captions cast
-        the initial votes, so the neighborhood starts in the user's folder."""
+        the initial votes, so the neighborhood starts in the user's folder.
+        A broad free-text term (e.g. 'chairs') seeds the object facet directly
+        for swipe-style exploration without a folder."""
         seed_pin_ids = list(dict.fromkeys(seed_pin_ids))
         seed_pin_ids = [pid for pid in seed_pin_ids if self.db.get_pin(pid)]
         if board_id:
@@ -53,6 +56,8 @@ class SessionEngine:
         state["history"] = []
         if board_id:
             self._bootstrap_from_board(state, board_id)
+        elif initial_query:
+            apply_user_edit(state, "object", initial_query.strip().lower(), accept=True)
         self.db.save_session(session["id"], state)
         return session
 

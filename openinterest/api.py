@@ -226,6 +226,10 @@ class SessionIn(BaseModel):
         default=None,
         description="Start from a board (e.g. 'chairs'): seeds pins and bootstraps the first-level query from the board name + member tags",
     )
+    initial_query: str | None = Field(
+        default=None,
+        description="Broad free-text term (e.g. 'chairs') to seed the first-level query without a folder — used by the swipe mode",
+    )
 
 
 @app.post("/sessions")
@@ -236,7 +240,7 @@ def create_session(body: SessionIn):
             raise HTTPException(404, f"seed pin {pid} not found")
     if body.board_id and not any(b["id"] == body.board_id for b in st["db"].list_boards()):
         raise HTTPException(404, f"board {body.board_id} not found")
-    return st["sessions"].create(body.seed_pin_ids, body.board_id)
+    return st["sessions"].create(body.seed_pin_ids, body.board_id, body.initial_query)
 
 
 @app.get("/sessions/{session_id}")
