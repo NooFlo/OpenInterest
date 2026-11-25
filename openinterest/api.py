@@ -12,6 +12,8 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pathlib import Path
 from pydantic import BaseModel, Field
 
 from .caption import make_captioner
@@ -31,6 +33,13 @@ app.add_middleware(
 )
 
 STATE: dict = {}
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 def init_state(settings: Settings | None = None) -> dict:
@@ -213,6 +222,10 @@ def similar_by_object(pin_id: str, point_suffix: str, limit: int = 30):
 # --------------------------------------------------------------------------
 class SessionIn(BaseModel):
     seed_pin_ids: list[str] = []
+    board_id: str | None = Field(
+        default=None,
+        description="Start from a board (e.g. 'chairs'): seeds pins and bootstraps the first-level query from the board name + member tags",
+    )
 
 
 @app.post("/sessions")
@@ -221,7 +234,9 @@ def create_session(body: SessionIn):
     for pid in body.seed_pin_ids:
         if not st["db"].get_pin(pid):
             raise HTTPException(404, f"seed pin {pid} not found")
-    return st["sessions"].create(body.seed_pin_ids)
+    if body.board_id and not any(b["id"] == body.board_id for b in st["db"].list_boards()):
+        raise HTTPException(404, f"board {body.board_id} not found")
+    return st["sessions"].create(body.seed_pin_ids, body.board_id)
 
 
 @app.get("/sessions/{session_id}")
@@ -235,27 +250,76 @@ def get_session(session_id: str):
 class SelectIn(BaseModel):
     extracted_facets: dict[str, dict] | None = Field(
         default=None,
-        description="VLM facet extraction {object: {value, confidence}, style: ...}; omit to auto-extract via captioner",
+        description="VLM facet extraction {object: {value, confidence}, style: ...}; omit to auto-derive (VLM if configured, else the pin's tags)",
     )
+
+
+def _describe_fn(st: dict):
+    def describe(image_url: str, pin: dict) -> dict:
+        return st["indexer"].describe(image_url, pin)
+
+    return describe
 
 
 @app.post("/sessions/{session_id}/select")
 def session_select(session_id: str, pin_id: str, body: SelectIn | None = None):
     st = state()
-    pin = st["db"].get_pin(pin_id)
-    if not pin:
-        raise HTTPException(404, "pin not found")
-    extracted = None
-    if body and body.extracted_facets:
-        extracted = body.extracted_facets
-    elif body is None or body.extracted_facets is None:
-        try:
-            described = st["indexer"].describe(pin["image_url"], pin)
-            extracted = described.get("facets") or None
-        except Exception:
-            extracted = None
+    extracted = body.extracted_facets if body and body.extracted_facets else None
     try:
-        return st["sessions"].select_image(session_id, pin_id, extracted)
+        return st["sessions"].select_image(
+            session_id, pin_id, extracted, describe=_describe_fn(st)
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+
+class DismissIn(BaseModel):
+    pin_id: str | None = None
+    pin_ids: list[str] = []
+
+
+@app.post("/sessions/{session_id}/dismiss")
+def session_dismiss(session_id: str, body: DismissIn):
+    """Negative signal: this candidate is not interesting — evidence against
+    its terms and removed from future results."""
+    st = state()
+    ids = body.pin_ids + ([body.pin_id] if body.pin_id else [])
+    try:
+        for pid in ids:
+            st["sessions"].dismiss_image(session_id, pid)
+        return st["sessions"].snapshot(session_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.get("/sessions/{session_id}/chips")
+def session_chips(session_id: str, limit: int = 8):
+    """Suggested search terms mined from the current neighborhood — helps
+    the user discover vocabulary for what they are looking for."""
+    try:
+        return state()["sessions"].suggest_chips(session_id, limit)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+
+class ChipIn(BaseModel):
+    facet: str
+    value: str
+
+
+@app.post("/sessions/{session_id}/chips")
+def session_adopt_chip(session_id: str, body: ChipIn):
+    try:
+        return state()["sessions"].adopt_chip(session_id, body.facet, body.value)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.get("/sessions/{session_id}/query")
+def session_query(session_id: str):
+    """Live query assumption for the top search bar."""
+    try:
+        return state()["sessions"].query_preview(session_id)
     except KeyError as exc:
         raise HTTPException(404, str(exc))
 

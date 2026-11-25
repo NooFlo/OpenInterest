@@ -79,3 +79,34 @@ def test_session_crud_and_facets(client):
 
 def test_session_404(client):
     assert client.post("/sessions/nope/search").status_code == 404
+
+
+def test_session_board_bootstrap_chips_dismiss_and_query(client):
+    board_id = client.post("/boards", json={"name": "chairs"}).json()["board_id"]
+    pin_ids = []
+    for i, tags in enumerate([["chair", "mid-century"], ["chair", "walnut"]]):
+        r = client.post("/pins", json={"image_url": f"http://e/{i}.jpg", "tags": tags,
+                                       "board_ids": [board_id], "index_now": False})
+        pin_ids.append(r.json()["id"])
+    r = client.post("/sessions", json={"board_id": board_id})
+    assert r.status_code == 200
+    sid = r.json()["id"]
+    q = client.get(f"/sessions/{sid}/query").json()
+    assert "chairs" in q["query"]
+
+    r = client.post(f"/sessions/{sid}/select", params={"pin_id": pin_ids[0]},
+                    json={"extracted_facets": {"object": {"value": "chair", "confidence": 0.9},
+                                               "material": {"value": "walnut", "confidence": 0.9}}})
+    assert r.status_code == 200
+    assert "walnut" in r.json()["query"]
+
+    r = client.post(f"/sessions/{sid}/dismiss", json={"pin_id": pin_ids[1]})
+    assert r.status_code == 200 and pin_ids[1] in r.json()["dismissed"]
+
+    r = client.get(f"/sessions/{sid}/chips")
+    assert r.status_code == 200 and "chips" in r.json()
+
+    r = client.post(f"/sessions/{sid}/chips", json={"facet": "style", "value": "art deco"})
+    assert r.status_code == 200 and "art deco" in r.json()["breadcrumb"]
+
+    assert client.get("/").status_code == 200
