@@ -67,7 +67,8 @@ def recompute_facets(state: dict, decay: float | None = None) -> dict:
             value = (cand.get("value") or "").strip().lower()
             conf = float(cand.get("confidence", 0.5))
             if key in CONFIDENCE_ORDER and value and value in scores.get(key, {}):
-                scores[key][value] -= 0.5 * conf
+                # one dismissal cancels roughly one vote of evidence for that value
+                scores[key][value] -= 1.0 * conf
 
     facets = state.setdefault("facets", {})
     for key in CONFIDENCE_ORDER:
@@ -88,21 +89,25 @@ def recompute_facets(state: dict, decay: float | None = None) -> dict:
         elif key in facets:
             del facets[key]
 
-    # promotion: accepted once the dominant value has both majority share and
-    # a minimum weighted vote (roughly one solid selection, or a few weak ones)
+    # promotion with hysteresis: initial promotion needs majority share plus
+    # a minimum weighted vote (roughly one solid selection); once accepted, a
+    # facet stays accepted while its value still has positive votes — decay
+    # alone never silently drops it from the query, only contradictory
+    # evidence (dismissals, an overtaking value) does
     MIN_VOTES = 0.5
     accepted = (state.setdefault("accepted", []) if isinstance(state.get("accepted"), list) else [])
     for key in CONFIDENCE_ORDER:
         f = facets.get(key)
         if not f:
             continue
-        promoted = (
-            key in state.get("overrides", {})
-            or (f.get("confidence", 1.0) >= _threshold(state) and f.get("votes", 0.0) >= MIN_VOTES)
-        )
-        if promoted and key not in accepted:
-            accepted.append(key)
-        if not promoted and key in accepted and key not in state.get("overrides", {}):
+        if key in state.get("overrides", {}):
+            continue
+        votes = f.get("votes", 0.0)
+        dominant = f.get("confidence", 1.0) >= _threshold(state) and votes > 0
+        if dominant and key not in accepted:
+            if votes >= MIN_VOTES:
+                accepted.append(key)
+        elif not dominant and key in accepted:
             accepted.remove(key)
     return state
 

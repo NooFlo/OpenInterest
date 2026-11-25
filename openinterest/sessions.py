@@ -200,7 +200,7 @@ class SessionEngine:
             pin_by_id[r["pin_id"]] = pin
             for tag in (pin.get("tags") or []) + _caption_words(pin.get("caption", "")):
                 tag = tag.strip().lower()
-                if len(tag) >= 3 and tag not in seen_vals:
+                if len(tag) >= 3 and not _is_known(tag, seen_vals):
                     counter[tag] += 1
         chips = [
             {"value": val, "count": n, "neighbor_pins": [p for p in pin_by_id if val in _terms(pin_by_id[p])][:3]}
@@ -261,6 +261,17 @@ def _caption_words(caption: str) -> list[str]:
     import re
 
     return [w for w in re.findall(r"[a-z][a-z-]{2,}", (caption or "").lower())][:6]
+
+
+def _norm(term: str) -> str:
+    return term.strip().lower().removesuffix("s")
+
+
+def _is_known(tag: str, seen_vals: set[str]) -> bool:
+    """Skip suggestions the user already has in the chain — including
+    singular/plural variants of accepted values."""
+    n = _norm(tag)
+    return any(n == _norm(v) or n in _norm(v) or _norm(v) in n for v in seen_vals)
 
 
 def _terms(pin: dict) -> set[str]:
