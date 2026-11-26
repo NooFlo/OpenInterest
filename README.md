@@ -54,6 +54,8 @@ uvicorn openinterest.api:app --host 127.0.0.1 --port 8000
 
 See `.env.example`: vector store (`QDRANT_URL`, falls back to in-memory), caption/facet backend (`MISTRAL_API_KEY` → Pixtral; unset → heuristic), models (`OPENCLIP_MODEL`, `DINOV2_MODEL`), and `ENABLE_OBJECT_EMBEDDINGS=1` for Phase 2 (slow on CPU; use a GPU).
 
+**No GPU required.** This is CPU-first by design: ViT-B/32 + DINOv2 ViT-B/14 each embed an image in ~0.1–0.5s on a plain CPU core (the pip `torch` wheels are CPU builds; Qdrant is CPU-friendly; the VLM captions/facets run as an API call, not locally). The only GPU-recommended part is the optional object-level sam-clip indexing (`ENABLE_OBJECT_EMBEDDINGS`, off by default, ~5–15s/image on CPU). If you want Phase 2 later without a server GPU, run that one-time/batch indexing on any rented GPU box against the same Qdrant+SQLite and keep the server CPU-only.
+
 ## Architecture
 
 ```
