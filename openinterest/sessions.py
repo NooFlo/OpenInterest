@@ -193,15 +193,21 @@ class SessionEngine:
         cand = self.local_candidates(session_id, limit=40)
         counter: Counter = Counter()
         pin_by_id = {}
+        chain_terms = {_norm(v) for v in current.values()}
         for r in cand["results"]:
             pin = self.db.get_pin(r["pin_id"])
             if not pin:
                 continue
             pin_by_id[r["pin_id"]] = pin
+            # affinity: candidates that also match accepted facet values back
+            # their terms more strongly, so chips surface the agreed vocabulary
+            affinity = 1.0 + sum(
+                1 for t in chain_terms if t and t in {_norm(x) for x in _terms(pin)}
+            )
             for tag in (pin.get("tags") or []) + _caption_words(pin.get("caption", "")):
                 tag = tag.strip().lower()
                 if len(tag) >= 3 and not _is_known(tag, seen_vals):
-                    counter[tag] += 1
+                    counter[tag] += affinity
         chips = [
             {"value": val, "count": n, "neighbor_pins": [p for p in pin_by_id if val in _terms(pin_by_id[p])][:3]}
             for val, n in counter.most_common(limit)

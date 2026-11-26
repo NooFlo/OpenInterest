@@ -95,6 +95,9 @@ def recompute_facets(state: dict, decay: float | None = None) -> dict:
     # alone never silently drops it from the query, only contradictory
     # evidence (dismissals, an overtaking value) does
     MIN_VOTES = 0.5
+    # color is the noisiest facet for taste queries: require stronger
+    # evidence before it enters the web query
+    EXTRA_BAR = {"color": 1.5}
     accepted = (state.setdefault("accepted", []) if isinstance(state.get("accepted"), list) else [])
     for key in CONFIDENCE_ORDER:
         f = facets.get(key)
@@ -105,7 +108,7 @@ def recompute_facets(state: dict, decay: float | None = None) -> dict:
         votes = f.get("votes", 0.0)
         dominant = f.get("confidence", 1.0) >= _threshold(state) and votes > 0
         if dominant and key not in accepted:
-            if votes >= MIN_VOTES:
+            if votes >= MIN_VOTES * EXTRA_BAR.get(key, 1.0):
                 accepted.append(key)
         elif not dominant and key in accepted:
             accepted.remove(key)

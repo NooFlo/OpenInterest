@@ -21,9 +21,12 @@ from openinterest.vectorstore import InMemoryStore
 DIM = 16
 TOPICS = {
     # topic -> one-hot base + tag vocabulary, three aesthetic clusters
-    "mcm_walnut": {"base": 0, "tags": ["chair", "mid-century", "walnut", "teak", "1960s", "danish"]},
-    "victorian": {"base": 1, "tags": ["chair", "victorian", "velvet", "ornate", "mahogany", "antique"]},
-    "minimal_metal": {"base": 2, "tags": ["chair", "minimalist", "steel", "modern", "black", "industrial"]},
+    "mcm_walnut": {"base": 0, "era": "1960s",
+                   "tags": ["chair", "mid-century", "walnut", "teak", "1960s", "danish"]},
+    "victorian": {"base": 1, "era": "antique",
+                  "tags": ["chair", "victorian", "velvet", "ornate", "mahogany", "antique"]},
+    "minimal_metal": {"base": 2, "era": "contemporary",
+                      "tags": ["chair", "minimalist", "steel", "modern", "black", "industrial"]},
 }
 
 
@@ -61,7 +64,7 @@ def vlm_extract(topic: str, pin_key: str, real: bool = True) -> dict:
         "material": {"value": material, "confidence": round(0.55 + noise, 2)},
     }
     if h % 3 == 0:  # VLM sometimes misses the era
-        out["era"] = {"value": TOPICS[topic]["tags"][4], "confidence": round(0.5 + noise, 2)}
+        out["era"] = {"value": TOPICS[topic]["era"], "confidence": round(0.5 + noise, 2)}
     return out
 
 
