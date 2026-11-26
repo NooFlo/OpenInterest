@@ -1,0 +1,26 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant_storage
+    ports:
+      - "127.0.0.1:6333:6333"
+    restart: unless-stopped
+
+  openinterest:
+    build: .
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      OPENINTEREST_DB: /data/openinterest.db
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENINTEREST_AGENT_KEY: ${OPENINTEREST_AGENT_KEY:-}
+    volumes:
+      - ./data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
